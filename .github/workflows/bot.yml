@@ -1,0 +1,64 @@
+name: RokhpadBot
+
+# The bot runs here, not on a local server, because Telegram's Bot API
+# (api.telegram.org) is not reachable from Iran. GitHub's runners sit outside that
+# network, so the bot talks to Telegram directly with no proxy, no VPN and no tunnel.
+#
+# Each run is a ~5h50m polling session; the schedule restarts it every 6 hours, which
+# gives effectively continuous uptime while staying inside the job time limit.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 */6 * * *"
+
+# Never run two pollers at once: Telegram allows a single getUpdates consumer,
+# and a second instance would steal updates from the first.
+concurrency:
+  group: rokhpadbot-poller
+  cancel-in-progress: false
+
+jobs:
+  run-bot:
+    name: Run bot (polling session)
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify bot credentials (getMe)
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          python test_bot.py
+
+      - name: Run bot
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
+          PYTHONUNBUFFERED: "1"
+        # 21000s = 5h50m, leaving headroom under the 355-minute job limit.
+        # SIGINT lets python-telegram-bot shut down cleanly instead of being killed.
+        run: |
+          timeout --signal=INT 21000 python rokbot.py || true
+
+      - name: Session summary
+        if: always()
+        run: |
+          echo "Session finished at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "The database is intentionally ephemeral: no visitor data is ever committed."
