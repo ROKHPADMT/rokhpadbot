@@ -1,6 +1,21 @@
-﻿.env
+﻿# secrets and local configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.ovpn
+*.conf
+
+# databases (ephemeral by design)
 *.db
 *.db-journal
+*.sqlite
+*.sqlite3
+
+# logs and caches
+*.log
+logs/
 __pycache__/
 *.pyc
 .venv/
