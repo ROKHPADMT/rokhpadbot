@@ -4,15 +4,17 @@ name: RokhpadBot
 # (api.telegram.org) is not reachable from Iran. GitHub's runners sit outside that
 # network, so the bot talks to Telegram directly with no proxy, no VPN and no tunnel.
 #
-# Each run is a ~5h50m polling session; the schedule restarts it every 6 hours, which
-# gives effectively continuous uptime while staying inside the job time limit.
+# Each run is a ~5h50m polling session. Cron fires every 3 hours so that when a
+# session ends, the next start is never more than ~3h away (and usually sooner).
+# concurrency keeps only one active poller; a queued run starts after the current
+# session finishes instead of fighting over getUpdates.
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
   schedule:
-    - cron: "0 */6 * * *"
+    - cron: "0 */3 * * *"
 
 # Never run two pollers at once: Telegram allows a single getUpdates consumer,
 # and a second instance would steal updates from the first.
