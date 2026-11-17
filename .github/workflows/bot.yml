@@ -1,23 +1,26 @@
 name: RokhpadBot
 
-# The bot runs here, not on a local server, because Telegram's Bot API
-# (api.telegram.org) is not reachable from Iran. GitHub's runners sit outside that
-# network, so the bot talks to Telegram directly with no proxy, no VPN and no tunnel.
+# Hands-off runtime: no human or model should need to click Run workflow.
 #
-# Each run is a ~5h50m polling session. Cron fires every 3 hours so that when a
-# session ends, the next start is never more than ~3h away (and usually sooner).
-# concurrency keeps only one active poller; a queued run starts after the current
-# session finishes instead of fighting over getUpdates.
+# Why GitHub Actions: api.telegram.org is unreachable from Iran; runners are outside.
+#
+# Design:
+# - One long-polling session ~5h50m (under the 6h job limit).
+# - Cron every hour. While a session is alive, concurrency keeps only one poller;
+#   at most one follow-up run stays pending and starts when the current session ends.
+# - That makes restart automatic: end of session → pending/next hourly tick → new session.
+# - push/workflow_dispatch remain for emergency use only, not for normal operation.
+#
+# Honest limit: GitHub may delay schedule triggers under load. Hourly ticks minimize
+# the blind gap. This is not a paid always-on VPS SLA.
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
   schedule:
-    - cron: "0 */3 * * *"
+    - cron: "0 * * * *"
 
-# Never run two pollers at once: Telegram allows a single getUpdates consumer,
-# and a second instance would steal updates from the first.
 concurrency:
   group: rokhpadbot-poller
   cancel-in-progress: false
@@ -54,8 +57,6 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
           PYTHONUNBUFFERED: "1"
-        # 21000s = 5h50m, leaving headroom under the 355-minute job limit.
-        # SIGINT lets python-telegram-bot shut down cleanly instead of being killed.
         run: |
           timeout --signal=INT 21000 python rokbot.py || true
 
@@ -63,4 +64,5 @@ jobs:
         if: always()
         run: |
           echo "Session finished at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "Hands-off mode: hourly schedule + concurrency should start the next session without manual Run."
           echo "The database is intentionally ephemeral: no visitor data is ever committed."
